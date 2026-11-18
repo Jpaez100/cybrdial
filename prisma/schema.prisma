@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  contacts     Contact[]
+  callLogs     CallLog[]
+  messages     Message[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("users")
+}
+
+model Contact {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String
+  email     String?
+  notes     String?
+  callLogs  CallLog[]
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, phone])
+  @@index([userId])
+  @@map("contacts")
+}
+
+model CallLog {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  callSid     String?       @unique
+  direction   CallDirection
+  status      String
+  fromNumber  String
+  toNumber    String
+  durationSec Int?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([userId, createdAt])
+  @@map("call_logs")
+}
+
+model Message {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId   String?
+  contact     Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  messageSid  String?          @unique
+  direction   MessageDirection
+  status      String
+  fromNumber  String
+  toNumber    String
+  body        String
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@map("messages")
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
