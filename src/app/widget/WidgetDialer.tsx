@@ -67,7 +67,6 @@ export function WidgetDialer() {
     remoteNumber,
     sendDigits,
     startCall,
-    toggleHold,
     toggleMute,
   } = useTwilioVoice();
   const inCall = callState !== "idle";
@@ -437,9 +436,8 @@ export function WidgetDialer() {
                 </div>
               ) : (
                 <>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     <button aria-pressed={isMuted} className={`rounded-xl border py-3 text-xs font-semibold ${isMuted ? "border-amber-300/30 bg-amber-300/10 text-amber-100" : "border-slate-800 bg-slate-900/70 text-slate-300"}`} onClick={toggleMute} type="button">{isMuted ? "Unmute" : "Mute"}</button>
-                    <button aria-pressed={isHeld} className={`rounded-xl border py-3 text-xs font-semibold ${isHeld ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100" : "border-slate-800 bg-slate-900/70 text-slate-300"}`} onClick={toggleHold} type="button">{isHeld ? "Resume" : "Hold"}</button>
                     <button aria-pressed={showKeypad} className="rounded-xl border border-slate-800 bg-slate-900/70 py-3 text-xs font-semibold text-slate-300" onClick={() => setShowKeypad((current) => !current)} type="button">Keypad</button>
                   </div>
                   {showKeypad && (

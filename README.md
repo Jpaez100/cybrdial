@@ -3,7 +3,7 @@
 CybrDial is a cloud communications application built with Next.js App Router,
 TypeScript, Tailwind CSS, Prisma, PostgreSQL/Supabase, and Twilio. It provides
 JWT session authentication, contact management, browser-based Voice/WebRTC
-calls, SMS conversations, call history, voicemail handling, and a Cyber-Dark
+calls, SMS conversations, call history, voicemail preparation, and a Cyber-Dark
 command center interface.
 
 ## Requirements
@@ -273,6 +273,23 @@ In a Twilio Trial account:
 CybrDial handles both responses with controlled Spanish API errors, records
 the SMS or call state where applicable, and does not expose credentials or
 Twilio secrets to the browser.
+
+## Feature Status
+
+| Area | Status | Notes |
+|---|---|---|
+| Dashboard and protected routes | Implemented | JWT session and `userId` isolation |
+| Voice token and WebRTC softphone | Implemented; pending live Trial verification | Subject to Twilio account permissions |
+| Incoming/outgoing call status | Implemented | Updated by signed Twilio callbacks |
+| Microphone mute/unmute | Implemented | Verified at UI level; actual account behavior depends on WebRTC permissions |
+| DTMF keypad | Implemented | Sends Twilio SDK tones during an active call |
+| SMS send/receive/status | Implemented; pending live Trial verification | Trial restrictions remain account-dependent |
+| Widget dialer/history/messages/contacts | Implemented | Hosted iframe integration |
+| Voicemail | Not yet developed | `TWILIO_VOICEMAIL_ENABLED=false`; no recording or callback flow |
+
+The terms "Implemented" and "Pending live Trial verification" are intentionally
+distinct. No live Twilio call or SMS is presented as verified unless it has
+been exercised successfully against an eligible account.
 
 ## Known Limitations
 
