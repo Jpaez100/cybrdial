@@ -21,6 +21,7 @@ export function ActiveCallCard() {
     isMuted,
     rejectCall,
     remoteNumber,
+    retryDevice,
     toggleMute,
   } = useTwilioVoice();
 
@@ -96,6 +97,15 @@ export function ActiveCallCard() {
           >
             {error}
           </p>
+        )}
+        {callState === "idle" && deviceState === "error" && (
+          <button
+            className="mt-4 rounded-lg border border-cyan-300/25 bg-cyan-300/[0.08] px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/[0.14]"
+            onClick={() => void retryDevice()}
+            type="button"
+          >
+            Reintentar conexión de voz
+          </button>
         )}
 
         {callState === "incoming" ? (

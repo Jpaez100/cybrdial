@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { normalizeE164PhoneNumber } from "@/lib/phone";
 
 export type VoiceDeviceState = "loading" | "offline" | "registered" | "error";
 export type VoiceCallState =
@@ -35,14 +36,15 @@ type VoiceContextValue = {
   toggleMute: () => void;
   sendDigits: (digits: string) => void;
   clearError: () => void;
+  retryDevice: () => Promise<void>;
 };
 
 const TwilioVoiceContext = createContext<VoiceContextValue | null>(null);
-const E164_PATTERN = /^\+[1-9]\d{1,14}$/;
 
 type TokenResponse = {
   token?: string;
   error?: string;
+  details?: string;
 };
 
 async function fetchVoiceToken(): Promise<string> {
@@ -53,19 +55,85 @@ async function fetchVoiceToken(): Promise<string> {
   });
   const result = (await response.json()) as TokenResponse;
   if (!response.ok || !result.token) {
-    throw new Error(result.error ?? "No se pudo obtener el token de voz.");
+    throw new Error(
+      [result.error ?? "No se pudo obtener el token de voz.", result.details]
+        .filter(Boolean)
+        .join(" "),
+    );
   }
 
   return result.token;
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Ocurrió un error de telefonía.";
+  const errorRecord = getErrorRecord(error);
+  if (!errorRecord) {
+    return error instanceof Error
+      ? error.message
+      : "Ocurrió un error de telefonía.";
+  }
+
+  const originalError = getErrorRecord(errorRecord.originalError);
+  const code =
+    typeof errorRecord.code === "string" ||
+    typeof errorRecord.code === "number"
+      ? String(errorRecord.code)
+      : typeof originalError?.code === "string" ||
+          typeof originalError?.code === "number"
+        ? String(originalError.code)
+        : "";
+  const message =
+    typeof errorRecord.message === "string"
+      ? errorRecord.message
+      : typeof originalError?.message === "string"
+        ? originalError.message
+        : "Twilio rechazó la llamada.";
+  const description =
+    typeof errorRecord.description === "string"
+      ? errorRecord.description
+      : typeof originalError?.description === "string"
+        ? originalError.description
+        : "";
+  const explanation =
+    typeof errorRecord.explanation === "string"
+      ? errorRecord.explanation
+      : typeof originalError?.explanation === "string"
+        ? originalError.explanation
+        : "";
+  const solutions = Array.isArray(errorRecord.solutions)
+    ? errorRecord.solutions.filter(
+        (solution): solution is string => typeof solution === "string",
+      )
+    : [];
+  const trialMessage = /trial|verified|verification/i.test(
+    `${message} ${description} ${explanation}`,
+  )
+    ? " En cuentas Trial, verifica el número de destino en Twilio Console y usa un caller ID permitido."
+    : "";
+  const detail = [description, explanation, ...solutions]
+    .filter((part) => part && part !== message)
+    .join(" ");
+
+  return [
+    code ? `Error de Twilio ${code}:` : "Error de telefonía:",
+    message,
+    detail,
+    trialMessage,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getErrorRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
   const deviceRef = useRef<Device | null>(null);
   const activeCallRef = useRef<Call | null>(null);
+  const initializeDeviceRef = useRef<(() => Promise<void>) | null>(null);
   const [deviceState, setDeviceState] = useState<VoiceDeviceState>("loading");
   const [callState, setCallState] = useState<VoiceCallState>("idle");
   const [activeCall, setActiveCall] = useState<Call | null>(null);
@@ -114,6 +182,10 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     async function initializeDevice() {
+      if (!mounted) {
+        return;
+      }
+
       setDeviceState("loading");
       try {
         const token = await fetchVoiceToken();
@@ -123,6 +195,8 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
         if (!mounted) {
           return;
         }
+        deviceRef.current?.destroy();
+        deviceRef.current = null;
         if (!VoiceDevice.isSupported) {
           throw new Error("Este navegador no es compatible con llamadas WebRTC.");
         }
@@ -144,6 +218,9 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
         device.on("error", (deviceError: Error) => {
           setDeviceState("error");
           setError(getErrorMessage(deviceError));
+          if (activeCallRef.current) {
+            clearActiveCall(activeCallRef.current);
+          }
         });
         device.on("incoming", (call: Call) => {
           const caller = call.parameters.From ?? call.parameters.Caller ?? "";
@@ -175,6 +252,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    initializeDeviceRef.current = initializeDevice;
     if (typeof window !== "undefined") {
       void initializeDevice();
     }
@@ -185,13 +263,23 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       activeCallRef.current = null;
       deviceRef.current?.destroy();
       deviceRef.current = null;
+      initializeDeviceRef.current = null;
     };
-  }, [bindCall]);
+  }, [bindCall, clearActiveCall]);
+
+  const retryDevice = useCallback(async () => {
+    if (deviceState === "loading" || callState !== "idle") {
+      return;
+    }
+
+    setError(null);
+    await initializeDeviceRef.current?.();
+  }, [callState, deviceState]);
 
   const startCall = useCallback(
     async (phoneNumber: string) => {
-      const destination = phoneNumber.trim();
-      if (!E164_PATTERN.test(destination)) {
+      const destination = normalizeE164PhoneNumber(phoneNumber);
+      if (!destination) {
         setError("Ingresa un número telefónico en formato E.164.");
         return;
       }
@@ -200,7 +288,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
         setError("El teléfono todavía no está conectado a Twilio.");
         return;
       }
-      if (activeCallRef.current) {
+      if (activeCallRef.current || callState !== "idle") {
         setError("Finaliza la llamada actual antes de iniciar otra.");
         return;
       }
@@ -214,10 +302,11 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       } catch (callError) {
         setCallState("idle");
         setRemoteNumber("");
+        setActiveCall(null);
         setError(getErrorMessage(callError));
       }
     },
-    [bindCall, deviceState],
+    [bindCall, callState, deviceState],
   );
 
   const answerCall = useCallback(() => {
@@ -276,6 +365,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       toggleMute,
       sendDigits,
       clearError,
+      retryDevice,
     }),
     [
       deviceState,
@@ -291,6 +381,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       toggleMute,
       sendDigits,
       clearError,
+      retryDevice,
     ],
   );
 

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ActiveCallCard } from "@/components/softphone/ActiveCallCard";
+import { useTwilioVoice } from "@/context/TwilioVoiceContext";
 
 type Contact = {
   id: string;
@@ -21,6 +23,7 @@ type ContactForm = {
 const EMPTY_FORM: ContactForm = { name: "", phone: "", email: "", notes: "" };
 
 export default function ContactsPage() {
+  const { callState, clearError, error: voiceError, startCall } = useTwilioVoice();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [form, setForm] = useState<ContactForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -153,6 +156,12 @@ export default function ContactsPage() {
         </div>
       )}
 
+      {(callState !== "idle" || voiceError) && (
+        <div className="max-w-xl">
+          <ActiveCallCard />
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-900/50 shadow-sm backdrop-blur-md">
           <div className="border-b border-slate-800/80 px-5 py-4">
@@ -184,13 +193,17 @@ export default function ContactsPage() {
                     )}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <a
+                    <button
                       aria-label={`Llamar a ${contact.name}`}
                       className="rounded-lg border border-cyan-400/20 bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500"
-                      href={`tel:${contact.phone}`}
+                      onClick={() => {
+                        clearError();
+                        void startCall(contact.phone);
+                      }}
+                      type="button"
                     >
                       Llamar
-                    </a>
+                    </button>
                     <Link
                       aria-label={`Enviar mensaje a ${contact.name}`}
                       className="rounded-lg border border-emerald-400/20 bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ActiveCallCard } from "@/components/softphone/ActiveCallCard";
+import { useTwilioVoice } from "@/context/TwilioVoiceContext";
 
 type Contact = {
   id: string;
@@ -18,6 +20,7 @@ type Message = {
 };
 
 export default function MessagesPage() {
+  const { callState, clearError, error: voiceError, startCall } = useTwilioVoice();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactId, setSelectedContactId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -170,6 +173,12 @@ export default function MessagesPage() {
         </div>
       )}
 
+      {(callState !== "idle" || voiceError) && (
+        <div className="max-w-xl">
+          <ActiveCallCard />
+        </div>
+      )}
+
       <div className="grid min-h-[560px] overflow-hidden rounded-xl border border-slate-800/80 bg-slate-900/50 shadow-sm backdrop-blur-md lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="border-b border-slate-800/80 lg:border-b-0 lg:border-r">
           <div className="border-b border-slate-800/80 px-5 py-4">
@@ -223,12 +232,16 @@ export default function MessagesPage() {
                     {selectedContact.phone}
                   </p>
                 </div>
-                <a
+                <button
                   className="rounded-lg border border-cyan-400/20 bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500"
-                  href={`tel:${selectedContact.phone}`}
+                  onClick={() => {
+                    clearError();
+                    void startCall(selectedContact.phone);
+                  }}
+                  type="button"
                 >
                   Llamar
-                </a>
+                </button>
               </header>
               <div
                 aria-live="polite"

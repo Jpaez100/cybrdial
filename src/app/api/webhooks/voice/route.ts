@@ -292,10 +292,20 @@ async function handleClientCall({
     where: { id: userId },
     select: { id: true, twilioPhoneNumber: true },
   });
-  if (!owner?.twilioPhoneNumber) {
+  if (!owner) {
     return Response.json(
-      { error: "La cuenta no tiene un número de voz asignado." },
+      { error: "No se encontró la cuenta asociada a la llamada." },
       { status: 404 },
+    );
+  }
+  const callerId = owner.twilioPhoneNumber ?? process.env.TWILIO_PHONE_NUMBER;
+  if (!isValidPhoneNumber(callerId)) {
+    return Response.json(
+      {
+        error:
+          "El caller ID de voz no está configurado en formato E.164. Revisa el número asignado al usuario o TWILIO_PHONE_NUMBER.",
+      },
+      { status: 503 },
     );
   }
 
@@ -309,7 +319,7 @@ async function handleClientCall({
       callSid,
       contactId: contact?.id,
       direction: "OUTBOUND",
-      fromNumber: owner.twilioPhoneNumber,
+      fromNumber: callerId,
       status: "initiated",
       toNumber: to,
       userId: owner.id,
@@ -321,6 +331,6 @@ async function handleClientCall({
   });
 
   return twimlResponse(
-    `<Dial action="${xmlEscape(getVoiceStatusCallbackUrl())}" method="POST" callerId="${xmlEscape(owner.twilioPhoneNumber)}"><Number>${xmlEscape(to)}</Number></Dial>`,
+    `<Dial action="${xmlEscape(getVoiceStatusCallbackUrl())}" method="POST" callerId="${xmlEscape(callerId)}"><Number>${xmlEscape(to)}</Number></Dial>`,
   );
 }
