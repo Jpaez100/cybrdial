@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useTwilioVoice } from "@/context/TwilioVoiceContext";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
@@ -41,17 +41,60 @@ export function Dialpad() {
   }
 
   function filterPhoneNumber(value: string) {
-    const digitsAndPlus = value.replace(/[^0-9+]/g, "");
-    if (digitsAndPlus.includes("+")) {
-      return `+${digitsAndPlus.replace(/\+/g, "").slice(0, 15)}`;
+    const dialCharacters = value.replace(/[^0-9+*#]/g, "");
+    if (dialCharacters.includes("+")) {
+      return `+${dialCharacters.replace(/\+/g, "").slice(0, 15)}`;
     }
-    return digitsAndPlus.slice(0, 16);
+    return dialCharacters.slice(0, 16);
   }
 
   function submitCall(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void startCall(phoneNumber);
   }
+
+  useEffect(() => {
+    function handlePhysicalKey(event: KeyboardEvent) {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        if (
+          !(target instanceof HTMLInputElement) ||
+          target.id !== "phone-number"
+        ) {
+          return;
+        }
+      }
+
+      if (isOnCall) {
+        if (/^[0-9*#]$/.test(event.key)) {
+          event.preventDefault();
+          sendDigits(event.key);
+        }
+        return;
+      }
+
+      if (/^[0-9*#]$/.test(event.key)) {
+        event.preventDefault();
+        setPhoneNumber((current) =>
+          filterPhoneNumber(`${current}${event.key}`),
+        );
+      } else if (event.key === "+" || event.code === "NumpadAdd") {
+        event.preventDefault();
+        setPhoneNumber((current) => (current === "" ? "+" : current));
+      } else if (event.key === "Backspace") {
+        event.preventDefault();
+        setPhoneNumber((current) => current.slice(0, -1));
+      }
+    }
+
+    window.addEventListener("keydown", handlePhysicalKey);
+    return () => window.removeEventListener("keydown", handlePhysicalKey);
+  }, [isOnCall, sendDigits]);
 
   return (
     <section className="rounded-2xl border border-slate-800/80 bg-[#101116]/90 p-5 shadow-[0_24px_70px_-38px_rgba(34,211,238,0.28)] backdrop-blur-xl sm:p-6">

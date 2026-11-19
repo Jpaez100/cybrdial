@@ -28,12 +28,14 @@ type VoiceContextValue = {
   activeCall: Call | null;
   remoteNumber: string;
   isMuted: boolean;
+  isHeld: boolean;
   error: string | null;
   startCall: (phoneNumber: string) => Promise<void>;
   answerCall: () => void;
   rejectCall: () => void;
   hangUp: () => void;
   toggleMute: () => void;
+  toggleHold: () => void;
   sendDigits: (digits: string) => void;
   clearError: () => void;
   retryDevice: () => Promise<void>;
@@ -135,17 +137,27 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
   const activeCallRef = useRef<Call | null>(null);
   const initializeDeviceRef = useRef<(() => Promise<void>) | null>(null);
   const callSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deviceSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdMuteRef = useRef(false);
   const [deviceState, setDeviceState] = useState<VoiceDeviceState>("loading");
   const [callState, setCallState] = useState<VoiceCallState>("idle");
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [remoteNumber, setRemoteNumber] = useState("");
   const [isMuted, setIsMuted] = useState(false);
+  const [isHeld, setIsHeld] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const clearCallSafetyTimer = useCallback(() => {
     if (callSafetyTimerRef.current) {
       clearTimeout(callSafetyTimerRef.current);
       callSafetyTimerRef.current = null;
+    }
+  }, []);
+
+  const clearDeviceSafetyTimer = useCallback(() => {
+    if (deviceSafetyTimerRef.current) {
+      clearTimeout(deviceSafetyTimerRef.current);
+      deviceSafetyTimerRef.current = null;
     }
   }, []);
 
@@ -160,6 +172,8 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
     setCallState("idle");
     setRemoteNumber("");
     setIsMuted(false);
+    setIsHeld(false);
+    holdMuteRef.current = false;
   }, [clearCallSafetyTimer]);
 
   const bindCall = useCallback(
@@ -168,6 +182,8 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       setActiveCall(call);
       setRemoteNumber(number);
       setIsMuted(call.isMuted());
+      setIsHeld(false);
+      holdMuteRef.current = false;
       setError(null);
       setCallState(call.direction === "INCOMING" ? "incoming" : "connecting");
 
@@ -206,6 +222,19 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       }
 
       setDeviceState("loading");
+      clearDeviceSafetyTimer();
+      deviceSafetyTimerRef.current = setTimeout(() => {
+        if (!mounted) {
+          return;
+        }
+        deviceRef.current?.destroy();
+        deviceRef.current = null;
+        setDeviceState("error");
+        setError(
+          "La conexión con Twilio no respondió. Comprueba el token y los permisos del navegador.",
+        );
+        deviceSafetyTimerRef.current = null;
+      }, 20_000);
       try {
         const token = await fetchVoiceToken();
         const { Call: VoiceCall, Device: VoiceDevice } = await import(
@@ -230,11 +259,19 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
         deviceRef.current = device;
 
         device.on("registered", () => {
+          clearDeviceSafetyTimer();
           setDeviceState("registered");
           setError(null);
         });
-        device.on("unregistered", () => setDeviceState("offline"));
+        device.on("unregistered", () => {
+          clearDeviceSafetyTimer();
+          setDeviceState("offline");
+          if (activeCallRef.current) {
+            clearActiveCall(activeCallRef.current);
+          }
+        });
         device.on("error", (deviceError: Error) => {
+          clearDeviceSafetyTimer();
           setDeviceState("error");
           setError(getErrorMessage(deviceError));
           if (activeCallRef.current) {
@@ -265,6 +302,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
         await device.register();
       } catch (deviceError) {
         if (mounted) {
+          clearDeviceSafetyTimer();
           setDeviceState("error");
           setError(getErrorMessage(deviceError));
         }
@@ -279,13 +317,19 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       clearCallSafetyTimer();
+      clearDeviceSafetyTimer();
       activeCallRef.current?.disconnect();
       activeCallRef.current = null;
       deviceRef.current?.destroy();
       deviceRef.current = null;
       initializeDeviceRef.current = null;
     };
-  }, [bindCall, clearActiveCall, clearCallSafetyTimer]);
+  }, [
+    bindCall,
+    clearActiveCall,
+    clearCallSafetyTimer,
+    clearDeviceSafetyTimer,
+  ]);
 
   const retryDevice = useCallback(async () => {
     if (deviceState === "loading" || callState !== "idle") {
@@ -380,6 +424,26 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
     setIsMuted(nextMutedState);
   }, [callState]);
 
+  const toggleHold = useCallback(() => {
+    const call = activeCallRef.current;
+    if (!call || callState === "incoming") {
+      return;
+    }
+
+    if (isHeld) {
+      call.mute(holdMuteRef.current);
+      setIsMuted(holdMuteRef.current);
+      setIsHeld(false);
+      holdMuteRef.current = false;
+      return;
+    }
+
+    holdMuteRef.current = call.isMuted();
+    call.mute(true);
+    setIsMuted(true);
+    setIsHeld(true);
+  }, [callState, isHeld]);
+
   const sendDigits = useCallback(
     (digits: string) => {
       if (!/^[0-9*#]+$/.test(digits) || !activeCallRef.current) {
@@ -399,12 +463,14 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       activeCall,
       remoteNumber,
       isMuted,
+      isHeld,
       error,
       startCall,
       answerCall,
       rejectCall,
       hangUp,
       toggleMute,
+      toggleHold,
       sendDigits,
       clearError,
       retryDevice,
@@ -415,12 +481,14 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       activeCall,
       remoteNumber,
       isMuted,
+      isHeld,
       error,
       startCall,
       answerCall,
       rejectCall,
       hangUp,
       toggleMute,
+      toggleHold,
       sendDigits,
       clearError,
       retryDevice,

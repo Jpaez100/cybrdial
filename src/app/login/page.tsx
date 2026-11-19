@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath =
+    searchParams.get("next") === "/widget" ? "/widget" : "/dashboard";
   const [registering, setRegistering] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,12 +26,12 @@ export default function LoginPage() {
         }
         const result = (await response.json()) as { user?: unknown };
         if (result.user) {
-          router.replace("/dashboard");
+          router.replace(nextPath);
           router.refresh();
         }
       })
       .catch(() => undefined);
-  }, [router]);
+  }, [nextPath, router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +56,7 @@ export default function LoginPage() {
         throw new Error(result.error ?? "No se pudo completar la solicitud.");
       }
 
-      router.push("/dashboard");
+      router.push(nextPath);
       router.refresh();
     } catch (cause) {
       setError(
@@ -163,5 +167,19 @@ export default function LoginPage() {
         </button>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#09090B] px-5 py-12 text-slate-400">
+          Cargando…
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

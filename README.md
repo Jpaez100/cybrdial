@@ -138,6 +138,94 @@ Twilio with these public callback paths:
 Keep the public URL stable while testing. `NEXT_PUBLIC_APP_URL` is retained only
 as a temporary compatibility fallback and emits an obsolescence warning.
 
+## Embeddable Widget (RingCentral-style)
+
+### How to integrate in any website
+
+Add the CybrDial widget to an external HTTPS website with:
+
+```html
+<script
+  src="https://TU-DOMINIO/widget.js"
+  data-position="right"
+  data-theme="dark"
+  data-open="false"
+></script>
+```
+
+The script attributes are:
+
+- `data-position="right|left"`: Dock position.
+- `data-theme="dark|light"`: Initial iframe theme hint.
+- `data-open="true|false"`: Open or minimize the widget after loading.
+
+### Dialer controls
+
+The widget Dialer supports:
+
+- A visible `+` button for adding an international E.164 prefix.
+- On-screen `0-9`, `*`, and `#` keys.
+- A backspace button for deleting the last character.
+- Physical keyboard input for `0-9`, `*`, `#`, `+`, and `Backspace`.
+- DTMF tones for `0-9`, `*`, and `#` when a call is active.
+
+The physical keyboard handler is scoped to the widget Dialer and skips other
+inputs, textareas, selects, and editable fields, including Messages and Contacts
+search fields.
+
+Control the widget from the host page through `window.CybrDialWidget`:
+
+```js
+window.CybrDialWidget.open();
+window.CybrDialWidget.minimize();
+window.CybrDialWidget.close();
+window.CybrDialWidget.dial("+573002061209");
+```
+
+The iframe posts structured `cybrdial:*` events to the host, including
+`ready`, `call-state`, `auth-state`, and `error`. The script validates the
+message origin and iframe source before dispatching events.
+
+Set `WIDGET_ALLOWED_ORIGINS` to a comma-separated allowlist of external origins:
+
+```env
+WIDGET_ALLOWED_ORIGINS="https://client.example.com,https://portal.example.com"
+```
+
+In production, the fallback allows only `frame-ancestors 'self'`; localhost is
+allowed only when `NODE_ENV !== "production"`.
+
+### Local widget demo
+
+Start CybrDial locally, then open:
+
+```text
+http://localhost:3000/widget-demo.html
+```
+
+The demo includes open/minimize/close/dial buttons and an event log. Because
+the same origin is used by the demo and widget, no additional
+`WIDGET_ALLOWED_ORIGINS` entry is required for the local test.
+
+For testing from another HTTPS origin or port, place that exact origin in
+`WIDGET_ALLOWED_ORIGINS`, restart Next.js, and ensure the browser is allowed
+to access the microphone inside the iframe. User gestures are required for
+
+### Login and return to the widget
+
+For widget authentication, open the login page with:
+
+```text
+http://localhost:3000/login?next=/widget
+```
+
+After a successful login or registration, CybrDial redirects to `/widget`
+instead of `/dashboard`. From `/widget`, open `/widget-demo.html` to test the
+embeddable host page. The login screen also retains `/dashboard` as the default
+destination when `next=/widget` is not provided. User gestures are required for
+microphone access, and Safari or Firefox privacy settings may block third-party
+cookies even when `SameSite=None; Secure` is configured.
+
 ## Application Routes
 
 - `POST /api/auth/register`: Create an invited account.

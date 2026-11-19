@@ -110,6 +110,11 @@ export function createSessionCookie(
   token: string,
   maxAge = SESSION_DURATION_SECONDS,
 ): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+  const appUrl = process.env.APP_URL;
+  const usesHttps =
+    process.env.NODE_ENV === "production" ||
+    (appUrl !== undefined && appUrl.startsWith("https://"));
+  const sameSite = usesHttps ? "None" : "Lax";
+  const secure = usesHttps ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAge}${secure}`;
 }
