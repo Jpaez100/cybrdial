@@ -33,6 +33,21 @@ export function Dialpad() {
     setPhoneNumber((current) => `${current}${key}`);
   }
 
+  function insertPlus() {
+    if (isOnCall) {
+      return;
+    }
+    setPhoneNumber((current) => (current === "" ? "+" : current));
+  }
+
+  function filterPhoneNumber(value: string) {
+    const digitsAndPlus = value.replace(/[^0-9+]/g, "");
+    if (digitsAndPlus.includes("+")) {
+      return `+${digitsAndPlus.replace(/\+/g, "").slice(0, 15)}`;
+    }
+    return digitsAndPlus.slice(0, 16);
+  }
+
   function submitCall(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void startCall(phoneNumber);
@@ -57,9 +72,15 @@ export function Dialpad() {
           Número telefónico
         </label>
         <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-[#09090B] px-3">
-          <span aria-hidden="true" className="text-cyan-400">
+          <button
+            aria-label="Agregar prefijo internacional"
+            className="px-1 text-lg text-cyan-400 transition hover:text-cyan-200 disabled:opacity-30"
+            disabled={isOnCall || phoneNumber.length > 0}
+            onClick={insertPlus}
+            type="button"
+          >
             +
-          </span>
+          </button>
           <input
             autoComplete="tel"
             className="min-w-0 flex-1 bg-transparent py-3.5 text-center font-mono text-lg tracking-[0.12em] text-slate-100 outline-none placeholder:text-slate-700"
@@ -67,7 +88,9 @@ export function Dialpad() {
             id="phone-number"
             inputMode="tel"
             maxLength={16}
-            onChange={(event) => setPhoneNumber(event.target.value)}
+            onChange={(event) =>
+              setPhoneNumber(filterPhoneNumber(event.target.value))
+            }
             placeholder="+1 415 555 2671"
             type="tel"
             value={phoneNumber}

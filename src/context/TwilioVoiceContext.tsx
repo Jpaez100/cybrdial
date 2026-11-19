@@ -134,6 +134,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
   const deviceRef = useRef<Device | null>(null);
   const activeCallRef = useRef<Call | null>(null);
   const initializeDeviceRef = useRef<(() => Promise<void>) | null>(null);
+  const callSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deviceState, setDeviceState] = useState<VoiceDeviceState>("loading");
   const [callState, setCallState] = useState<VoiceCallState>("idle");
   const [activeCall, setActiveCall] = useState<Call | null>(null);
@@ -141,7 +142,15 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const clearCallSafetyTimer = useCallback(() => {
+    if (callSafetyTimerRef.current) {
+      clearTimeout(callSafetyTimerRef.current);
+      callSafetyTimerRef.current = null;
+    }
+  }, []);
+
   const clearActiveCall = useCallback((call: Call) => {
+    clearCallSafetyTimer();
     if (activeCallRef.current !== call) {
       return;
     }
@@ -151,7 +160,7 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
     setCallState("idle");
     setRemoteNumber("");
     setIsMuted(false);
-  }, []);
+  }, [clearCallSafetyTimer]);
 
   const bindCall = useCallback(
     (call: Call, number: string) => {
@@ -162,20 +171,30 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       setError(null);
       setCallState(call.direction === "INCOMING" ? "incoming" : "connecting");
 
-      call.on("accept", () => setCallState("connected"));
-      call.on("ringing", () => setCallState("ringing"));
+      call.on("accept", () => {
+        clearCallSafetyTimer();
+        setCallState("connected");
+      });
+      call.on("ringing", () => {
+        clearCallSafetyTimer();
+        setCallState("ringing");
+      });
       call.on("reconnecting", () => setCallState("reconnecting"));
-      call.on("reconnected", () => setCallState("connected"));
+      call.on("reconnected", () => {
+        clearCallSafetyTimer();
+        setCallState("connected");
+      });
       call.on("mute", (muted: boolean) => setIsMuted(muted));
       call.on("disconnect", () => clearActiveCall(call));
       call.on("cancel", () => clearActiveCall(call));
       call.on("reject", () => clearActiveCall(call));
       call.on("error", (callError: Error) => {
+        clearCallSafetyTimer();
         setError(getErrorMessage(callError));
         clearActiveCall(call);
       });
     },
-    [clearActiveCall],
+    [clearActiveCall, clearCallSafetyTimer],
   );
 
   useEffect(() => {
@@ -259,13 +278,14 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      clearCallSafetyTimer();
       activeCallRef.current?.disconnect();
       activeCallRef.current = null;
       deviceRef.current?.destroy();
       deviceRef.current = null;
       initializeDeviceRef.current = null;
     };
-  }, [bindCall, clearActiveCall]);
+  }, [bindCall, clearActiveCall, clearCallSafetyTimer]);
 
   const retryDevice = useCallback(async () => {
     if (deviceState === "loading" || callState !== "idle") {
@@ -296,17 +316,39 @@ export function TwilioVoiceProvider({ children }: { children: ReactNode }) {
       setError(null);
       setCallState("connecting");
       setRemoteNumber(destination);
+      clearCallSafetyTimer();
+      callSafetyTimerRef.current = setTimeout(() => {
+        const call = activeCallRef.current;
+        if (call) {
+          call?.disconnect();
+        }
+        activeCallRef.current = null;
+        setActiveCall(null);
+        setCallState("idle");
+        setRemoteNumber("");
+        setError("La llamada no respondió antes del límite de conexión.");
+        callSafetyTimerRef.current = null;
+      }, 45_000);
       try {
         const call = await device.connect({ params: { To: destination } });
+        if (call.status() === "closed") {
+          clearCallSafetyTimer();
+          setCallState("idle");
+          setRemoteNumber("");
+          setActiveCall(null);
+          setError("La llamada terminó antes de establecerse.");
+          return;
+        }
         bindCall(call, destination);
       } catch (callError) {
+        clearCallSafetyTimer();
         setCallState("idle");
         setRemoteNumber("");
         setActiveCall(null);
         setError(getErrorMessage(callError));
       }
     },
-    [bindCall, callState, deviceState],
+    [bindCall, callState, clearCallSafetyTimer, deviceState],
   );
 
   const answerCall = useCallback(() => {
