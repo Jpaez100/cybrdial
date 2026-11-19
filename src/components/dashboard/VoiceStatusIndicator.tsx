@@ -21,8 +21,8 @@ export function VoiceStatusIndicator() {
         )}
         <span className="relative inline-flex h-2 w-2 rounded-full bg-current shadow-[0_0_10px_currentColor]" />
       </span>
-      <span className="text-[11px] font-medium text-slate-300">
-        {isReady ? "Voice online" : "Voice offline"}
+      <span className="text-xs font-medium text-slate-300">
+        {isReady ? "Voz conectada" : "Voz desconectada"}
       </span>
     </div>
   );

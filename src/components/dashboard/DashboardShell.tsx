@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { VoiceStatusIndicator } from "@/components/dashboard/VoiceStatusIndicator";
 import { TwilioVoiceProvider } from "@/context/TwilioVoiceContext";
 
 const navigation = [
-  { href: "/dashboard", label: "Command center", icon: "⌂" },
-  { href: "/dashboard/calls", label: "Calls", icon: "↗" },
-  { href: "/messages", label: "Messages", icon: "◌" },
-  { href: "/contacts", label: "Contacts", icon: "◎" },
+  { href: "/dashboard", label: "Centro de comando", icon: "⌂" },
+  { href: "/dashboard/calls", label: "Llamadas", icon: "↗" },
+  { href: "/messages", label: "Mensajes", icon: "◌" },
+  { href: "/contacts", label: "Contactos", icon: "◎" },
 ];
 
 export function DashboardShell({
@@ -14,6 +18,22 @@ export function DashboardShell({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function logout() {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth", {
+        method: "DELETE",
+        cache: "no-store",
+      });
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
+
   return (
     <TwilioVoiceProvider>
       <div className="relative min-h-screen overflow-hidden bg-[#09090B] text-slate-100">
@@ -55,8 +75,8 @@ export function DashboardShell({
                 <span className="block text-[15px] font-bold tracking-[0.12em] text-slate-100">
                   CYBR<span className="text-cyan-300">DIAL</span>
                 </span>
-                <span className="mt-0.5 block text-[9px] font-medium uppercase tracking-[0.28em] text-slate-500">
-                  Communications OS
+                <span className="mt-0.5 block text-xs font-medium uppercase tracking-[0.28em] text-slate-400">
+                  Sistema de comunicaciones
                 </span>
               </span>
             </Link>
@@ -81,12 +101,14 @@ export function DashboardShell({
 
             <div className="flex items-center gap-3">
               <VoiceStatusIndicator />
-              <Link
-                className="hidden rounded-full border border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] font-medium text-slate-400 transition hover:border-slate-700 hover:text-slate-100 sm:block"
-                href="/login"
+              <button
+                className="hidden rounded-full border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-slate-700 hover:text-slate-100 sm:block"
+                disabled={loggingOut}
+                onClick={() => void logout()}
+                type="button"
               >
-                Account
-              </Link>
+                {loggingOut ? "Cerrando…" : "Cerrar sesión"}
+              </button>
             </div>
           </div>
         </header>
@@ -95,8 +117,8 @@ export function DashboardShell({
           {children}
         </main>
 
-        <footer className="relative z-10 border-t border-slate-900/90 px-4 py-4 text-center text-[10px] uppercase tracking-[0.2em] text-slate-600">
-          CybrDial · Secure communications infrastructure
+        <footer className="relative z-10 border-t border-slate-900/90 px-4 py-4 text-center text-xs uppercase tracking-[0.2em] text-slate-400">
+          CybrDial · Infraestructura segura de comunicaciones
         </footer>
       </div>
     </TwilioVoiceProvider>

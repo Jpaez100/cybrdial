@@ -1,6 +1,6 @@
 import { isE164PhoneNumber } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { validateTwilioRequest } from "@/services/twilio.service";
+import { verifyTwilioWebhook } from "@/lib/twilio-webhook";
 
 const TWILIO_RESPONSE =
   '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
@@ -12,73 +12,12 @@ const WEBHOOK_PATHS = [
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  const signature = request.headers.get("x-twilio-signature");
-  if (!authToken || !appUrl) {
-    console.error("Incoming SMS webhook requires Twilio credentials and app URL.");
-    return Response.json(
-      { error: "El webhook de SMS no está configurado." },
-      { status: 500 },
-    );
-  }
-  if (!signature) {
-    return Response.json({ error: "Firma requerida." }, { status: 403 });
-  }
-  if (
-    !request.headers
-      .get("content-type")
-      ?.toLowerCase()
-      .includes("application/x-www-form-urlencoded")
-  ) {
-    return Response.json(
-      { error: "Se esperaba un formulario URL-encoded de Twilio." },
-      { status: 415 },
-    );
-  }
-
   try {
-    const configuredUrl = new URL(appUrl);
-    if (
-      configuredUrl.protocol !== "https:" &&
-      process.env.NODE_ENV === "production"
-    ) {
-      throw new Error("NEXT_PUBLIC_APP_URL debe usar HTTPS en producción.");
+    const verified = await verifyTwilioWebhook(request, WEBHOOK_PATHS);
+    if (!verified.ok) {
+      return verified.response;
     }
-
-    const formData = await request.formData();
-    const params: Record<string, string> = {};
-    for (const [key, value] of formData.entries()) {
-      if (typeof value !== "string" || Object.hasOwn(params, key)) {
-        return Response.json(
-          { error: "Los parámetros del webhook no son válidos." },
-          { status: 400 },
-        );
-      }
-      params[key] = value;
-    }
-
-    const requestUrl = new URL(request.url);
-    if (!WEBHOOK_PATHS.includes(requestUrl.pathname)) {
-      return Response.json(
-        { error: "Ruta de webhook no válida." },
-        { status: 400 },
-      );
-    }
-    const webhookUrl = new URL(
-      `${requestUrl.pathname}${requestUrl.search}`,
-      configuredUrl,
-    ).toString();
-    if (!validateTwilioRequest(authToken, signature, webhookUrl, params)) {
-      return Response.json({ error: "Firma no válida." }, { status: 403 });
-    }
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    if (accountSid && params.AccountSid !== accountSid) {
-      return Response.json(
-        { error: "El mensaje no pertenece a la cuenta Twilio configurada." },
-        { status: 403 },
-      );
-    }
+    const params = verified.params;
 
     const messageSid = params.MessageSid;
     const from = params.From;

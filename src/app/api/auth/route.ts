@@ -1,4 +1,8 @@
-import { createSessionCookie, getAuthenticatedUser } from "@/lib/auth";
+import {
+  createSessionCookie,
+  getAuthenticatedUser,
+} from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
   try {
@@ -13,13 +17,16 @@ export async function GET(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  const user = await getAuthenticatedUser(request);
+  if (user) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  }
   return Response.json(
     { success: true },
-    {
-      headers: {
-        "Set-Cookie": createSessionCookie("", 0),
-      },
-    },
+    { headers: { "Set-Cookie": createSessionCookie("", 0) } },
   );
 }

@@ -42,12 +42,12 @@ export function Dialpad() {
     <section className="rounded-2xl border border-slate-800/80 bg-[#101116]/90 p-5 shadow-[0_24px_70px_-38px_rgba(34,211,238,0.28)] backdrop-blur-xl sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-300/80">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/80">
             Softphone
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-100">Dialpad</h2>
         </div>
-        <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
           {isOnCall ? "DTMF" : "E.164"}
         </span>
       </div>
@@ -116,7 +116,7 @@ export function Dialpad() {
               <span className="font-mono text-xl font-medium leading-none text-slate-100 transition group-hover:text-cyan-200">
                 {key}
               </span>
-              <span className="mt-1 h-2 text-[8px] font-semibold tracking-[0.2em] text-slate-600">
+              <span className="mt-1 h-2 text-xs font-semibold tracking-[0.2em] text-slate-400">
                 {KEY_HINTS[key]}
               </span>
             </button>
@@ -145,7 +145,7 @@ export function Dialpad() {
           {isOnCall ? "En llamada" : "Iniciar llamada"}
         </button>
       </form>
-      <p className="mt-3 text-center text-[10px] text-slate-600">
+      <p className="mt-3 text-center text-xs text-slate-400">
         Las llamadas requieren permiso de micrófono en el navegador.
       </p>
     </section>

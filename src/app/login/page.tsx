@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -10,8 +10,24 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+        const result = (await response.json()) as { user?: unknown };
+        if (result.user) {
+          router.replace("/dashboard");
+          router.refresh();
+        }
+      })
+      .catch(() => undefined);
+  }, [router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,7 +40,11 @@ export default function LoginPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, ...(registering ? { name } : {}) }),
+          body: JSON.stringify({
+            email,
+            password,
+            ...(registering ? { name, inviteCode } : {}),
+          }),
         },
       );
       const result = (await response.json()) as { error?: string };
@@ -73,6 +93,19 @@ export default function LoginPage() {
                 maxLength={100}
                 onChange={(event) => setName(event.target.value)}
                 value={name}
+              />
+            </label>
+          )}
+          {registering && (
+            <label className="block text-sm font-medium text-slate-300">
+              Código de invitación
+              <input
+                autoComplete="off"
+                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-slate-100 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                onChange={(event) => setInviteCode(event.target.value)}
+                required
+                type="password"
+                value={inviteCode}
               />
             </label>
           )}

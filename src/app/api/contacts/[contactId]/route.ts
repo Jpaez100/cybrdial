@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { isE164PhoneNumber } from "@/lib/phone";
+import { isValidEmail } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 import { readJsonObject } from "@/lib/request";
 
@@ -82,7 +83,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         body.email !== null &&
         (typeof body.email !== "string" ||
           body.email.trim().length > 254 ||
-          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()))
+          !isValidEmail(body.email.trim()))
       ) {
         return Response.json({ error: "Correo inválido." }, { status: 400 });
       }

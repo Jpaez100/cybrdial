@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { timingSafeEqual } from "node:crypto";
 import {
   createSessionCookie,
   createSessionToken,
@@ -6,21 +7,58 @@ import {
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { readJsonObject } from "@/lib/request";
+import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import { isValidEmail } from "@/lib/validation";
 
 export async function POST(request: Request) {
   try {
     const body = await readJsonObject(request);
+    const ipLimit = rateLimit({
+      key: `register-ip:${getClientIp(request)}`,
+      limit: 5,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (!ipLimit.ok) {
+      return Response.json(
+        { error: "Demasiados registros. Intenta nuevamente más tarde." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(ipLimit.retryAfterSec) },
+        },
+      );
+    }
+    const registrationInviteCode = process.env.REGISTRATION_INVITE_CODE;
+    if (!registrationInviteCode) {
+      return Response.json(
+        { error: "El registro está cerrado." },
+        { status: 403 },
+      );
+    }
     if (
       !body ||
       typeof body.email !== "string" ||
       typeof body.password !== "string" ||
+      typeof body.inviteCode !== "string" ||
       (body.name !== undefined &&
         body.name !== null &&
         typeof body.name !== "string")
     ) {
       return Response.json(
-        { error: "Proporciona un correo y una contraseña válidos." },
+        { error: "Proporciona un correo, una contraseña y el código de invitación válidos." },
         { status: 400 },
+      );
+    }
+
+    const receivedInviteCode = body.inviteCode;
+    const receivedBuffer = Buffer.from(receivedInviteCode, "utf8");
+    const expectedBuffer = Buffer.from(registrationInviteCode, "utf8");
+    const inviteCodeMatches =
+      receivedBuffer.length === expectedBuffer.length &&
+      timingSafeEqual(receivedBuffer, expectedBuffer);
+    if (!inviteCodeMatches) {
+      return Response.json(
+        { error: "El código de invitación no es válido." },
+        { status: 403 },
       );
     }
 
@@ -28,7 +66,7 @@ export async function POST(request: Request) {
     const password = body.password;
     const name = typeof body.name === "string" ? body.name.trim() : null;
     if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      !isValidEmail(email) ||
       email.length > 254 ||
       password.length < 12 ||
       new TextEncoder().encode(password).byteLength > 72 ||

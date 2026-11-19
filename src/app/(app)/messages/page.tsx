@@ -26,6 +26,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [unauthorized, setUnauthorized] = useState(false);
   const [sending, setSending] = useState(false);
 
   const loadContacts = useCallback(async () => {
@@ -35,7 +36,9 @@ export default function MessagesPage() {
       error?: string;
     };
     if (!response.ok) {
-      throw new Error(result.error ?? "No se pudieron cargar los contactos.");
+      const error = new Error(result.error ?? "No se pudieron cargar los contactos.");
+      Object.assign(error, { status: response.status });
+      throw error;
     }
 
     setContacts(result.contacts ?? []);
@@ -66,17 +69,24 @@ export default function MessagesPage() {
       error?: string;
     };
     if (!response.ok) {
-      throw new Error(result.error ?? "No se pudieron cargar los mensajes.");
+      const error = new Error(result.error ?? "No se pudieron cargar los mensajes.");
+      Object.assign(error, { status: response.status });
+      throw error;
     }
     setMessages(result.messages ?? []);
   }, []);
 
   useEffect(() => {
-    loadContacts().catch((cause: unknown) =>
+    loadContacts().catch((cause: unknown) => {
+      setUnauthorized(
+        cause instanceof Error &&
+          "status" in cause &&
+          cause.status === 401,
+      );
       setError(
         cause instanceof Error ? cause.message : "Error al cargar contactos.",
-      ),
-    );
+      );
+    });
   }, [loadContacts]);
 
   useEffect(() => {
@@ -89,6 +99,11 @@ export default function MessagesPage() {
     const refresh = () =>
       loadMessages(selectedContactId).catch((cause: unknown) => {
         if (active) {
+          setUnauthorized(
+            cause instanceof Error &&
+              "status" in cause &&
+              cause.status === 401,
+          );
           setError(
             cause instanceof Error
               ? cause.message
@@ -98,11 +113,23 @@ export default function MessagesPage() {
       });
 
     setError("");
+    setUnauthorized(false);
     void refresh();
-    const intervalId = window.setInterval(() => void refresh(), 4000);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    }, 4000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       active = false;
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [loadMessages, selectedContactId]);
 
@@ -125,11 +152,18 @@ export default function MessagesPage() {
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(result.error ?? "No se pudo enviar el mensaje.");
+        const error = new Error(result.error ?? "No se pudo enviar el mensaje.");
+        Object.assign(error, { status: response.status });
+        throw error;
       }
       setText("");
       await loadMessages(selectedContactId);
     } catch (cause) {
+      setUnauthorized(
+        cause instanceof Error &&
+          "status" in cause &&
+          cause.status === 401,
+      );
       setError(
         cause instanceof Error ? cause.message : "Error al enviar el mensaje.",
       );
@@ -162,7 +196,7 @@ export default function MessagesPage() {
           role="alert"
         >
           {error}
-          {error.includes("autenticado") && (
+          {unauthorized && (
             <>
               {" "}
               <Link className="font-semibold underline" href="/login">

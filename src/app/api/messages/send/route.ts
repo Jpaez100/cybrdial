@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { readJsonObject } from "@/lib/request";
 import { getTwilioClient } from "@/services/twilio.service";
 import { isE164PhoneNumber } from "@/lib/phone";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,21 @@ export async function POST(request: Request) {
     const user = await getAuthenticatedUser(request);
     if (!user) {
       return Response.json({ error: "No autenticado." }, { status: 401 });
+    }
+
+    const smsLimit = rateLimit({
+      key: `sms-user:${user.id}`,
+      limit: 30,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (!smsLimit.ok) {
+      return Response.json(
+        { error: "Demasiados SMS. Intenta nuevamente más tarde." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(smsLimit.retryAfterSec) },
+        },
+      );
     }
 
     const body = await readJsonObject(request);
@@ -56,25 +72,57 @@ export async function POST(request: Request) {
       );
     }
 
-    const sentMessage = await getTwilioClient().messages.create({
-      body: text,
-      from,
-      to: contact.phone,
-    });
     const message = await prisma.message.create({
       data: {
         userId: user.id,
         contactId: contact.id,
-        messageSid: sentMessage.sid,
         direction: "OUTBOUND",
-        status: sentMessage.status,
+        status: "queued",
         fromNumber: from,
         toNumber: contact.phone,
         body: text,
       },
     });
 
-    return Response.json({ message }, { status: 201 });
+    try {
+      const appUrl = process.env.APP_URL;
+      if (!appUrl) {
+        throw new Error("APP_URL no está configurado.");
+      }
+      const sentMessage = await getTwilioClient().messages.create({
+        body: text,
+        from,
+        to: contact.phone,
+        statusCallback: `${appUrl}/api/webhooks/sms/status`,
+      });
+      const updatedMessage = await prisma.message.update({
+        where: { id: message.id },
+        data: {
+          messageSid: sentMessage.sid,
+          status: sentMessage.status,
+        },
+      });
+      return Response.json({ message: updatedMessage }, { status: 201 });
+    } catch (error) {
+      await prisma.message.update({
+        where: { id: message.id },
+        data: { status: "failed" },
+      });
+      const twilioCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "number"
+          ? error.code
+          : undefined;
+      if (twilioCode === 21610) {
+        return Response.json(
+          { error: "El contacto canceló la recepción de mensajes." },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("SMS send failed:", error);
     return Response.json(

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { isE164PhoneNumber } from "@/lib/phone";
+import { isValidEmail } from "@/lib/validation";
 import { prisma } from "@/lib/prisma";
 import { readJsonObject } from "@/lib/request";
 
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
       name.length > 100 ||
       !isE164PhoneNumber(phone) ||
       (email !== null &&
-        (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) ||
+        (email.length > 254 || !isValidEmail(email))) ||
       (notes !== null && notes.length > 2000)
     ) {
       return Response.json(

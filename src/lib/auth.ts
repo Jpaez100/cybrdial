@@ -19,7 +19,15 @@ function getAuthKey(): Uint8Array {
 }
 
 export async function createSessionToken(userId: string): Promise<string> {
-  return new SignJWT({})
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sessionVersion: true },
+  });
+  if (!user) {
+    throw new Error("No se pudo resolver la versión de sesión.");
+  }
+
+  return new SignJWT({ sv: user.sessionVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuer(JWT_ISSUER)
@@ -31,7 +39,7 @@ export async function createSessionToken(userId: string): Promise<string> {
 
 export async function verifySessionToken(
   token: string,
-): Promise<string | null> {
+): Promise<{ userId: string; sv: number } | null> {
   try {
     const { payload } = await jwtVerify(token, getAuthKey(), {
       algorithms: ["HS256"],
@@ -39,7 +47,10 @@ export async function verifySessionToken(
       issuer: JWT_ISSUER,
     });
 
-    return typeof payload.sub === "string" ? payload.sub : null;
+    return typeof payload.sub === "string" &&
+      typeof payload.sv === "number"
+      ? { userId: payload.sub, sv: payload.sv }
+      : null;
   } catch (error) {
     if (
       error instanceof errors.JWTExpired ||
@@ -80,16 +91,19 @@ export async function getAuthenticatedUserFromToken(
     return null;
   }
 
-  const userId = await verifySessionToken(token);
-  if (!userId) {
+  const session = await verifySessionToken(token);
+  if (!session) {
     return null;
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true },
+    where: { id: session.userId },
+    select: { id: true, email: true, name: true, sessionVersion: true },
   });
-  return user;
+  if (!user || user.sessionVersion !== session.sv) {
+    return null;
+  }
+  return { id: user.id, email: user.email, name: user.name };
 }
 
 export function createSessionCookie(

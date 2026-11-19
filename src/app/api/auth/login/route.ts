@@ -1,10 +1,26 @@
 import {
   createSessionCookie,
   createSessionToken,
+  hashPassword,
   verifyPassword,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { readJsonObject } from "@/lib/request";
+import { getClientIp, rateLimit } from "@/lib/rate-limit";
+
+const dummyPasswordHashPromise = hashPassword(
+  "cybrdial-dummy-password-for-timing",
+);
+
+function retryAfterResponse(retryAfterSec: number): Response {
+  return Response.json(
+    { error: "Demasiados intentos. Intenta nuevamente más tarde." },
+    {
+      status: 429,
+      headers: { "Retry-After": String(retryAfterSec) },
+    },
+  );
+}
 
 export async function POST(request: Request) {
   try {
@@ -33,8 +49,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const ipLimit = rateLimit({
+      key: `login-ip:${getClientIp(request)}`,
+      limit: 10,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!ipLimit.ok) {
+      return retryAfterResponse(ipLimit.retryAfterSec);
+    }
+    const emailLimit = rateLimit({
+      key: `login-email:${email}`,
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!emailLimit.ok) {
+      return retryAfterResponse(emailLimit.retryAfterSec);
+    }
+
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    const passwordHash = user?.passwordHash ?? (await dummyPasswordHashPromise);
+    if (!user || !(await verifyPassword(password, passwordHash))) {
       return Response.json(
         { error: "Correo o contraseña incorrectos." },
         { status: 401 },

@@ -30,7 +30,7 @@ export function ActiveCallCard() {
       <section className="rounded-2xl border border-slate-800/80 bg-[#101116]/80 p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
               Voz en tiempo real
             </p>
             <h2 className="mt-1 text-base font-semibold text-slate-200">
@@ -63,7 +63,7 @@ export function ActiveCallCard() {
     >
       <div className="p-5 sm:p-6">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
             {callState === "idle" ? "Estado del teléfono" : "Llamada activa"}
           </p>
           {callState !== "idle" && (

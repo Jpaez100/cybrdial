@@ -1,6 +1,8 @@
 import { getUserIdFromVoiceIdentity, getVoiceIdentity } from "@/lib/voice";
+import { isDestinationAllowed } from "@/lib/call-policy";
 import { prisma } from "@/lib/prisma";
-import { validateTwilioRequest } from "@/services/twilio.service";
+import { isE164PhoneNumber } from "@/lib/phone";
+import { verifyTwilioWebhook } from "@/lib/twilio-webhook";
 
 export const runtime = "nodejs";
 
@@ -11,7 +13,6 @@ const WEBHOOK_PATHS = [
   "/api/webhooks/voice/status",
 ];
 const STATUS_WEBHOOK_PATH = "/api/webhooks/voice/status";
-const E164_PATTERN = /^\+[1-9]\d{1,14}$/;
 const SID_PATTERN = /^[A-Za-z0-9]{1,64}$/;
 const COMPLETED_CALL_STATUSES: ReadonlySet<string> = new Set([
   "completed",
@@ -43,93 +44,32 @@ function twimlResponse(content: string): Response {
 }
 
 function isValidPhoneNumber(value: string | undefined): value is string {
-  return value !== undefined && E164_PATTERN.test(value);
+  return value !== undefined && isE164PhoneNumber(value);
 }
 
 function getVoiceStatusCallbackUrl(): string {
-  const publicUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const publicUrl =
+    process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
   if (!publicUrl) {
-    throw new Error("NEXT_PUBLIC_APP_URL no está configurado.");
+    throw new Error("APP_URL no está configurado.");
   }
 
   const baseUrl = new URL(publicUrl);
   if (baseUrl.protocol !== "https:" && process.env.NODE_ENV === "production") {
-    throw new Error("NEXT_PUBLIC_APP_URL debe usar HTTPS en producción.");
+    throw new Error("APP_URL debe usar HTTPS en producción.");
   }
 
   return new URL(STATUS_WEBHOOK_PATH, baseUrl).toString();
 }
 
 export async function POST(request: Request) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const publicUrl = process.env.NEXT_PUBLIC_APP_URL;
-  const signature = request.headers.get("x-twilio-signature");
-
-  if (!authToken || !publicUrl) {
-    console.error("Voice webhook requires TWILIO_AUTH_TOKEN and NEXT_PUBLIC_APP_URL.");
-    return Response.json(
-      { error: "El webhook de voz no está configurado." },
-      { status: 500 },
-    );
-  }
-  if (!signature) {
-    return Response.json({ error: "Firma requerida." }, { status: 403 });
-  }
-  if (
-    !request.headers
-      .get("content-type")
-      ?.toLowerCase()
-      .includes("application/x-www-form-urlencoded")
-  ) {
-    return Response.json(
-      { error: "Se esperaba un formulario URL-encoded de Twilio." },
-      { status: 415 },
-    );
-  }
-
   try {
+    const verified = await verifyTwilioWebhook(request, WEBHOOK_PATHS);
+    if (!verified.ok) {
+      return verified.response;
+    }
+    const params = verified.params;
     const requestUrl = new URL(request.url);
-    if (!WEBHOOK_PATHS.includes(requestUrl.pathname)) {
-      return Response.json(
-        { error: "Ruta de webhook no válida." },
-        { status: 400 },
-      );
-    }
-
-    const configuredUrl = new URL(publicUrl);
-    if (
-      configuredUrl.protocol !== "https:" &&
-      process.env.NODE_ENV === "production"
-    ) {
-      throw new Error("NEXT_PUBLIC_APP_URL debe usar HTTPS en producción.");
-    }
-    const webhookUrl = new URL(
-      `${requestUrl.pathname}${requestUrl.search}`,
-      configuredUrl,
-    ).toString();
-
-    const formData = await request.formData();
-    const params: Record<string, string> = {};
-    for (const [key, value] of formData.entries()) {
-      if (typeof value !== "string" || Object.hasOwn(params, key)) {
-        return Response.json(
-          { error: "Los parámetros del webhook no son válidos." },
-          { status: 400 },
-        );
-      }
-      params[key] = value;
-    }
-
-    if (!validateTwilioRequest(authToken, signature, webhookUrl, params)) {
-      return Response.json({ error: "Firma no válida." }, { status: 403 });
-    }
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    if (accountSid && params.AccountSid !== accountSid) {
-      return Response.json(
-        { error: "La llamada no pertenece a la cuenta Twilio configurada." },
-        { status: 403 },
-      );
-    }
 
     const callSid = params.CallSid;
     if (!callSid || !SID_PATTERN.test(callSid)) {
@@ -298,14 +238,41 @@ async function handleClientCall({
       { status: 404 },
     );
   }
-  const callerId = owner.twilioPhoneNumber ?? process.env.TWILIO_PHONE_NUMBER;
-  if (!isValidPhoneNumber(callerId)) {
+  const callerId = owner.twilioPhoneNumber;
+  if (!callerId || !isValidPhoneNumber(callerId)) {
     return Response.json(
       {
-        error:
-          "El caller ID de voz no está configurado en formato E.164. Revisa el número asignado al usuario o TWILIO_PHONE_NUMBER.",
+        error: "Tu cuenta no tiene un número de voz asignado.",
       },
-      { status: 503 },
+      { status: 403 },
+    );
+  }
+  if (!isDestinationAllowed(to)) {
+    return Response.json(
+      { error: "El destino no está permitido por la política de llamadas." },
+      { status: 403 },
+    );
+  }
+
+  const configuredLimit = Number.parseInt(
+    process.env.MAX_OUTBOUND_CALLS_PER_DAY ?? "30",
+    10,
+  );
+  const dailyLimit =
+    Number.isSafeInteger(configuredLimit) && configuredLimit >= 0
+      ? configuredLimit
+      : 30;
+  const outboundCallCount = await prisma.callLog.count({
+    where: {
+      userId: owner.id,
+      direction: "OUTBOUND",
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+  });
+  if (outboundCallCount >= dailyLimit) {
+    return Response.json(
+      { error: "Has alcanzado el límite diario de llamadas." },
+      { status: 429 },
     );
   }
 

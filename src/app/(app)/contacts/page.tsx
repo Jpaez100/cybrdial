@@ -30,6 +30,7 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [unauthorized, setUnauthorized] = useState(false);
 
   const loadContacts = useCallback(async () => {
     const response = await fetch("/api/contacts", { cache: "no-store" });
@@ -38,18 +39,25 @@ export default function ContactsPage() {
       error?: string;
     };
     if (!response.ok) {
-      throw new Error(result.error ?? "No se pudieron cargar los contactos.");
+      const error = new Error(result.error ?? "No se pudieron cargar los contactos.");
+      Object.assign(error, { status: response.status });
+      throw error;
     }
     setContacts(result.contacts ?? []);
   }, []);
 
   useEffect(() => {
     loadContacts()
-      .catch((cause: unknown) =>
+      .catch((cause: unknown) => {
+        setUnauthorized(
+          cause instanceof Error &&
+            "status" in cause &&
+            cause.status === 401,
+        );
         setError(
           cause instanceof Error ? cause.message : "Error al cargar contactos.",
-        ),
-      )
+        );
+      })
       .finally(() => setLoading(false));
   }, [loadContacts]);
 
@@ -71,6 +79,7 @@ export default function ContactsPage() {
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setUnauthorized(false);
     setSaving(true);
     try {
       const response = await fetch(
@@ -88,11 +97,18 @@ export default function ContactsPage() {
       );
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(result.error ?? "No se pudo guardar el contacto.");
+        const error = new Error(result.error ?? "No se pudo guardar el contacto.");
+        Object.assign(error, { status: response.status });
+        throw error;
       }
       resetForm();
       await loadContacts();
     } catch (cause) {
+      setUnauthorized(
+        cause instanceof Error &&
+          "status" in cause &&
+          cause.status === 401,
+      );
       setError(
         cause instanceof Error ? cause.message : "Error al guardar contacto.",
       );
@@ -106,19 +122,27 @@ export default function ContactsPage() {
       return;
     }
     setError("");
+    setUnauthorized(false);
     try {
       const response = await fetch(`/api/contacts/${contact.id}`, {
         method: "DELETE",
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(result.error ?? "No se pudo eliminar el contacto.");
+        const error = new Error(result.error ?? "No se pudo eliminar el contacto.");
+        Object.assign(error, { status: response.status });
+        throw error;
       }
       if (editingId === contact.id) {
         resetForm();
       }
       await loadContacts();
     } catch (cause) {
+      setUnauthorized(
+        cause instanceof Error &&
+          "status" in cause &&
+          cause.status === 401,
+      );
       setError(
         cause instanceof Error ? cause.message : "Error al eliminar contacto.",
       );
@@ -145,7 +169,7 @@ export default function ContactsPage() {
           role="alert"
         >
           {error}
-          {error.includes("autenticado") && (
+          {unauthorized && (
             <>
               {" "}
               <Link className="font-semibold underline" href="/login">

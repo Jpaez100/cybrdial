@@ -1,82 +1,8 @@
-type TwilioMessage = {
-  sid: string;
-  status: string;
-};
+import twilio from "twilio";
 
-type TwilioClient = {
-  messages: {
-    create(options: {
-      body: string;
-      from: string;
-      to: string;
-    }): Promise<TwilioMessage>;
-  };
-};
+export type TwilioClient = ReturnType<typeof twilio>;
 
-type VoiceGrantOptions = {
-  outgoingApplicationSid: string;
-  incomingAllow: boolean;
-};
-
-type VoiceGrantConstructor = new (
-  options: VoiceGrantOptions,
-) => object;
-
-type AccessTokenConstructor = {
-  new (
-    accountSid: string,
-    apiKeySid: string,
-    apiKeySecret: string,
-    options: { identity: string; ttl: number },
-  ): {
-    addGrant(grant: object): void;
-    toJwt(): string;
-  };
-  VoiceGrant: VoiceGrantConstructor;
-};
-
-type TwilioSdk = {
-  (accountSid: string, authToken: string): TwilioClient;
-  validateRequest(
-    authToken: string,
-    signature: string,
-    url: string,
-    params: Record<string, string>,
-  ): boolean;
-  jwt: {
-    AccessToken: AccessTokenConstructor;
-  };
-};
-
-let sdk: TwilioSdk | undefined;
 let client: TwilioClient | undefined;
-
-function getTwilioSdk(): TwilioSdk {
-  if (sdk) {
-    return sdk;
-  }
-
-  const moduleValue: unknown = require("twilio");
-  const jwt: unknown =
-    typeof moduleValue === "function"
-      ? Reflect.get(moduleValue, "jwt")
-      : undefined;
-  const accessToken: unknown =
-    typeof jwt === "object" && jwt !== null
-      ? Reflect.get(jwt, "AccessToken")
-      : undefined;
-  if (
-    typeof moduleValue !== "function" ||
-    typeof Reflect.get(moduleValue, "validateRequest") !== "function" ||
-    typeof accessToken !== "function" ||
-    typeof Reflect.get(accessToken, "VoiceGrant") !== "function"
-  ) {
-    throw new Error("No se pudo cargar el SDK de Twilio.");
-  }
-
-  sdk = moduleValue as TwilioSdk;
-  return sdk;
-}
 
 export function getTwilioClient(): TwilioClient {
   if (client) {
@@ -92,7 +18,7 @@ export function getTwilioClient(): TwilioClient {
     );
   }
 
-  client = getTwilioSdk()(accountSid, authToken);
+  client = twilio(accountSid, authToken);
   return client;
 }
 
@@ -102,7 +28,7 @@ export function validateTwilioRequest(
   url: string,
   params: Record<string, string>,
 ): boolean {
-  return getTwilioSdk().validateRequest(authToken, signature, url, params);
+  return twilio.validateRequest(authToken, signature, url, params);
 }
 
 export function createVoiceAccessToken(options: {
@@ -112,15 +38,14 @@ export function createVoiceAccessToken(options: {
   identity: string;
   twimlAppSid: string;
 }): string {
-  const twilioSdk = getTwilioSdk();
-  const accessToken = new twilioSdk.jwt.AccessToken(
+  const accessToken = new twilio.jwt.AccessToken(
     options.accountSid,
     options.apiKeySid,
     options.apiKeySecret,
     { identity: options.identity, ttl: 3600 },
   );
   accessToken.addGrant(
-    new twilioSdk.jwt.AccessToken.VoiceGrant({
+    new twilio.jwt.AccessToken.VoiceGrant({
       outgoingApplicationSid: options.twimlAppSid,
       incomingAllow: true,
     }),
