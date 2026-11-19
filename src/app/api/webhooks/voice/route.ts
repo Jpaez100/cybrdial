@@ -48,6 +48,11 @@ function isValidPhoneNumber(value: string | undefined): value is string {
 }
 
 function getVoiceStatusCallbackUrl(): string {
+  if (!process.env.APP_URL && process.env.NEXT_PUBLIC_APP_URL) {
+    console.warn(
+      "NEXT_PUBLIC_APP_URL está obsoleto; configura APP_URL en el servidor.",
+    );
+  }
   const publicUrl =
     process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
   if (!publicUrl) {

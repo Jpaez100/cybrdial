@@ -6,6 +6,8 @@ coverage/
 .vercel/
 
 .env
+.env.local
+.env*.local
 .env.*
 !.env.example
 
@@ -13,6 +15,12 @@ coverage/
 /dist
 
 *.log
+*.pem
+*.key
+*.p12
+*.pfx
+credentials/
+secrets/
 .DS_Store
 
 /prisma/*.db

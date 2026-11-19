@@ -1,11 +1,7 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireAuthenticatedUser } from "@/lib/require-authenticated-user";
 
-export default function HomePage() {
-  return (
-    <main>
-      <h1>Cybrdial</h1>
-      <p>Centro de control de llamadas, mensajes y contactos.</p>
-      <Link href="/dashboard">Abrir el panel</Link>
-    </main>
-  );
+export default async function HomePage() {
+  await requireAuthenticatedUser();
+  redirect("/dashboard");
 }

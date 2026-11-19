@@ -121,6 +121,15 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
+      if (twilioCode === 572006) {
+        return Response.json(
+          {
+            error:
+              "Twilio restringió el SMS en esta cuenta. En cuentas Trial puede requerirse usar plantillas aprobadas.",
+          },
+          { status: 422 },
+        );
+      }
       throw error;
     }
   } catch (error) {
