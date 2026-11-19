@@ -26,7 +26,7 @@ entrante. El seed no inicia sesión automáticamente ni ofrece una contraseña
 por defecto. El usuario también puede crear una cuenta desde `/login`.
 
 La aplicación estará disponible en `http://localhost:3000`. Configura ese
-dominio público en `NEXT_PUBLIC_APP_URL` y como URL del webhook entrante de SMS
+dominio público en `APP_URL` y como URL del webhook entrante de SMS
 en Twilio: `POST /api/webhooks/sms/incoming`.
 Para voz, configura el número entrante como `POST /api/webhooks/voice/incoming`
 y la TwiML App como `POST /api/webhooks/voice/outbound`.
@@ -74,6 +74,13 @@ cookie de sesión use el atributo `Secure`. Configura `TWILIO_AUTH_TOKEN`,
 `TWILIO_PHONE_NUMBER`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` y
 `TWILIO_TWIML_APP_SID` según las funciones habilitadas.
 
+La política de llamadas usa `ALLOWED_CALL_PREFIXES` como una lista separada por
+comas de prefijos E.164; si está ausente o vacía no se permite ningún destino.
+`MAX_OUTBOUND_CALLS_PER_DAY` establece el límite diario por usuario y usa 30
+cuando no está definido o no contiene un entero válido. `REGISTRATION_INVITE_CODE`
+debe contener un código privado para habilitar el registro desde `/login`; si no
+está definido, el registro permanece cerrado.
+
 Para enrutar SMS entrantes en una instalación multiusuario, asigna un número
 Twilio único a cada cuenta en `User.twilioPhoneNumber`; el seed demo asigna el
 número global configurado. Añade limitación de intentos distribuida para
@@ -87,3 +94,7 @@ exacta de Twilio y revisa las reglas de retención/consentimiento de SMS.
 Ejecuta `npm run typecheck`, `npm run build` y `npm run db:generate` para
 verificar tipos, compilación y cliente de base de datos. No publiques las
 credenciales del archivo `.env`.
+
+## Limitaciones conocidas
+
+PostCSS anidado de Next 15 con avisos de severidad alta; solo se ejecuta al compilar sobre CSS propio; se resolverá al migrar a Next 16.

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/cybrdial"
+          DIRECT_URL: "postgresql://user:password@localhost:5432/cybrdial"
+          AUTH_SECRET: "ci-auth-secret-with-at-least-32-bytes"
+          TWILIO_ACCOUNT_SID: "AC00000000000000000000000000000000"
+          TWILIO_AUTH_TOKEN: "ci-twilio-auth-token"
+          TWILIO_API_KEY_SID: "SK00000000000000000000000000000000"
+          TWILIO_API_KEY_SECRET: "ci-twilio-api-key-secret"
+          TWILIO_TWIML_APP_SID: "AP00000000000000000000000000000000"
+          TWILIO_PHONE_NUMBER: "+15551234567"
+          APP_URL: "https://example.com"
+          ALLOWED_CALL_PREFIXES: "+1"
+          MAX_OUTBOUND_CALLS_PER_DAY: "30"
+          REGISTRATION_INVITE_CODE: "ci-invite-code"
+      # Temporal: el PostCSS anidado de Next 15 está limitado hasta la migración a Next 16.
+      - run: npm audit --audit-level=critical
